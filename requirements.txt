@@ -1,0 +1,6 @@
+scipy 
+scikit-learn
+opencv-python
+pyyaml
+easydict
+termcolor

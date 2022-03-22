@@ -1,0 +1,50 @@
+# Dataset
+root_dir: output 
+train_db_name: NOVEL_CLUSTERS
+data_root: /ssd/yyzhao/data/VOCSegmentation
+train_db_kwargs:
+   split: trainaug
+   batch_size: 8
+val_db_name: VOCSegmentation
+val_db_kwargs:
+   batch_size: 16
+num_workers: 4
+
+# Model
+backbone: 'resnet50'
+backbone_imagenet: True
+backbone_kwargs:
+   dilated: True
+head: 'deeplab'
+pretraining: ''
+ft_layer: ['backbone.layer3', 'backbone.layer4', 'decoder', 'head']
+
+# Optimizer
+epochs: 30
+scheduler: step
+scheduler_kwargs:
+   lr_decay_rate: 0.1
+   lr_decay_epochs: [15]
+
+optimizer: sgd 
+optimizer_kwargs:
+   lr: 0.1
+   weight_decay: 0.0001
+   momentum: 0.9
+   nesterov: False
+freeze_batchnorm: 'backbone' 
+
+#
+teacher_student_kwargs:
+   m: 0.99 
+   K: 128
+
+## weight for self-training
+rampup_coefficient: 1
+rampup_length: 5
+threshold: 0.0
+
+## dynamic reassignment
+entropy:
+   reassign_epoch: [5] 
+   split_proportion: 0.5
