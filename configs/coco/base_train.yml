@@ -1,0 +1,37 @@
+# Dataset
+root_dir: output # Results will be saved at this location.
+train_db_name: COCO_BASE
+data_root: /ssd/yyzhao/data/coco
+train_db_kwargs:
+   base_all: True
+   split: train
+   batch_size: 16
+val_db_name: COCO_BASE
+val_db_kwargs:
+   batch_size: 16
+num_workers: 4
+
+# Model
+backbone: 'resnet50'
+backbone_imagenet: True
+backbone_kwargs:
+   dilated: True
+head: 'deeplab'
+pretraining: '' # Change this.
+ft_layer: ['backbone.layer3', 'backbone.layer4', 'decoder']
+
+# Optimizer
+epochs: 20
+scheduler: step
+scheduler_kwargs:
+   lr_decay_rate: 0.1
+   lr_decay_epochs: [15]
+
+optimizer: sgd 
+optimizer_kwargs:
+   lr: 0.1
+   weight_decay: 0.0001
+   momentum: 0.9
+   nesterov: False
+
+freeze_batchnorm: 'backbone'

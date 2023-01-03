@@ -49,10 +49,23 @@ def create_config(args):
         cfg['num_classes'] = 15 + cfg['nclusters']
         cfg['has_bg'] = True
 
+    elif cfg['train_db_name'] == 'COCO_BASE':
+        cfg['num_classes'] = 60
+        cfg['has_bg'] = True
+
+    elif cfg['train_db_name'] == 'COCO_NOVEL':
+        cfg['num_classes'] = 60 + cfg['nclusters']
+        cfg['has_bg'] = True
+
 
     else:
         raise ValueError('Invalid train db name {}'.format(cfg['train_db_name']))
 
+    if 'COCO' in cfg['train_db_name']:
+        cfg['dataset'] = 'COCO'
+    else:
+        cfg['dataset'] = 'PASCAL'
+        
     if 'threshold' in vars(args):
         if args.threshold is not None:
             cfg['threshold'] = args.threshold

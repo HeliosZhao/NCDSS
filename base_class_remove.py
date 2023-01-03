@@ -11,6 +11,7 @@ from utils.evaluate_utils import base_class_remove_save
 from termcolor import colored
 
 from data.dataloaders.pascal_voc import VOC12_NovelSaliency
+from data.dataloaders.coco import COCO_NovelSaliency
          
 # Parser
 parser = argparse.ArgumentParser(description='Base Class Remove')
@@ -57,7 +58,10 @@ def main():
     # Transforms 
     val_transforms = get_val_transformations_wsal()
     # val_dataset = get_val_dataset(p, val_transforms)
-    val_dataset = VOC12_NovelSaliency(root=args.data_dir, split='trainaug', transform=val_transforms, novel_fold=p['fold']) 
+    if p['dataset'] == 'COCO':
+        val_dataset = COCO_NovelSaliency(root=args.data_dir, split='train', transform=val_transforms, novel_fold=p['fold']) 
+    else:
+        val_dataset = VOC12_NovelSaliency(root=args.data_dir, split='trainaug', transform=val_transforms, novel_fold=p['fold']) 
     # true_val_dataset = get_val_dataset(p, None) # True validation dataset without reshape 
     val_dataloader = get_val_dataloader(p, val_dataset)
     print(colored('Val samples %d' %(len(val_dataset)), 'yellow'))

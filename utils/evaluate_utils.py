@@ -90,7 +90,17 @@ def eval_segmentation_supervised_offline(p, val_dataset, verbose=True):
     """ Evaluate stored predictions from a segmentation network.
         The semantic masks from the validation dataset are not supposed to change. 
     """
-    n_classes = 21
+    if p['dataset'] == 'COCO':
+        base_cls_num = 60
+        novel_cls_num = 20
+        total_cls_num = 80
+
+    else:
+        base_cls_num = 15
+        novel_cls_num = 5
+        total_cls_num = 20
+
+    n_classes = total_cls_num+1
 
     # Iterate
     tp = [0] * n_classes
@@ -151,18 +161,28 @@ def eval_segmentation_full_classes_online(p, val_loader, model, verbose=True):
         Alternative: Use store_results_to_disk and then evaluate with eval_segmentation_supervised_offline.
     """
 
-    semseg_meter = SemsegMeter(20, val_loader.dataset.get_class_names(),
+    if p['dataset'] == 'COCO':
+        base_cls_num = 60
+        novel_cls_num = 20
+        total_cls_num = 80
+
+    else:
+        base_cls_num = 15
+        novel_cls_num = 5
+        total_cls_num = 20
+    
+    semseg_meter = SemsegMeter(total_cls_num, val_loader.dataset.get_class_names(),
                             p['has_bg'], ignore_index=255)
     model.eval()
-    all_pixels = torch.zeros((len(val_loader.sampler) * 512 * 512)).cuda()  #.to(model.device)
-    all_gt = torch.zeros((len(val_loader.sampler) * 512 * 512)).cuda() ###.to(model.device)
-    all_gt_novel = torch.zeros((len(val_loader.sampler) * 512 * 512)).cuda() ###.to(model.device)
+    all_pixels = torch.zeros((len(val_loader.sampler) * 512 * 512))  #.to(model.device)
+    all_gt = torch.zeros((len(val_loader.sampler) * 512 * 512)) ###.to(model.device)
+    # all_gt_novel = torch.zeros((len(val_loader.sampler) * 512 * 512)) ###.to(model.device)
     offset_ = 0
     gt_offset_sum = 0
     pred_offset_sum = 0
 
     print('Start gathering novel class information ......')
-    for i, batch in tqdm(enumerate(val_loader)):
+    for i, batch in enumerate(tqdm(val_loader)):
         images = batch['image'].cuda(non_blocking=True)
         targets = batch['semseg'].cuda(non_blocking=True)
         output_tuple = model(images)
@@ -171,44 +191,44 @@ def eval_segmentation_full_classes_online(p, val_loader, model, verbose=True):
         else:
             output = output_tuple
 
-        novel_map = (targets > 15).long()
+        novel_map = (targets > base_cls_num).long()
         novel_map[targets==255] = 0
         gt_valid = novel_map.sum()
-        all_gt_novel[gt_offset_sum:gt_offset_sum+gt_valid,] = targets[novel_map==1]
+        # all_gt_novel[gt_offset_sum:gt_offset_sum+gt_valid,] = targets[novel_map==1].cpu()
         gt_offset_sum += gt_valid
 
         prediction = torch.argmax(output, dim=1)
         
-        prediction_map = (prediction > 15).long()
+        prediction_map = (prediction > base_cls_num).long()
         pred_offset_sum += prediction_map.sum()
-        true_positive_novel = ((prediction * novel_map) > 15).long() ## both gt and pred are of the novel class
+        true_positive_novel = ((prediction * novel_map) > base_cls_num).long() ## both gt and pred are of the novel class
         n_valid = true_positive_novel.sum()
-        all_gt[offset_:offset_+n_valid,] = targets[true_positive_novel==1]
-        all_pixels[offset_:offset_+n_valid,] = prediction[true_positive_novel==1]
+        all_gt[offset_:offset_+n_valid,] = targets[true_positive_novel==1].data.cpu()
+        all_pixels[offset_:offset_+n_valid,] = prediction[true_positive_novel==1].data.cpu()
 
         offset_ += n_valid
     
     all_pixels = all_pixels[:offset_,]
     all_gt = all_gt[:offset_,]
 
-    all_pixels -= 16 ## convert to 0-4
-    all_gt -= 16
+    all_pixels -= (base_cls_num+1) ## convert to 0-4
+    all_gt -= (base_cls_num+1)
 
-    all_pixels = all_pixels.data.cpu().numpy()
-    all_gt = all_gt.data.cpu().numpy()
+    all_pixels = all_pixels.numpy()
+    all_gt = all_gt.numpy()
     
     print('Start hungarian match ......')
-    if p['nclusters'] == 5:
-        match = _hungarian_match(all_pixels, all_gt, preds_k=5, targets_k=5, metric='iou')
-    elif p['nclusters'] > 5:
-        match = _majority_vote(all_pixels, all_gt, preds_k=p['nclusters'], targets_k=5, metric='iou')
+    if p['nclusters'] == novel_cls_num:
+        match = _hungarian_match(all_pixels, all_gt, preds_k=novel_cls_num, targets_k=novel_cls_num, metric='iou')
+    elif p['nclusters'] > novel_cls_num:
+        match = _majority_vote(all_pixels, all_gt, preds_k=p['nclusters'], targets_k=novel_cls_num, metric='iou')
     else:
         raise NotImplementedError
     print('Hungarian match : ', match)
     del all_pixels, all_gt
 
     print('Evaluation with new label ......')
-    for i, batch in tqdm(enumerate(val_loader)):
+    for i, batch in enumerate(tqdm(val_loader)):
         images = batch['image'].cuda(non_blocking=True)
         targets = batch['semseg'].cuda(non_blocking=True)
         output_tuple = model(images)
@@ -220,12 +240,12 @@ def eval_segmentation_full_classes_online(p, val_loader, model, verbose=True):
 
         prediction_relabel = prediction.clone()
         for pred_i, target_i in match:
-            prediction_relabel[prediction==(pred_i+16)] = target_i+16
+            prediction_relabel[prediction==(pred_i+base_cls_num+1)] = target_i+base_cls_num+1
         
         semseg_meter.update(prediction_relabel, targets)
 
     eval_results = semseg_meter.return_score(verbose = True, return_jac=True)
-    novel_and_bg = eval_results['jaccards_all_categs'][-5:] 
+    novel_and_bg = eval_results['jaccards_all_categs'][-novel_cls_num:] 
     eval_results['mIoU'] = np.mean(novel_and_bg)
     return eval_results
 
@@ -286,12 +306,23 @@ def eval_segmentation_full_classes_offline(p, val_loader, model, verbose=True):
 
         Alternative: Use store_results_to_disk and then evaluate with eval_segmentation_supervised_offline.
     """
-    semseg_meter = SemsegMeter(20, val_loader.dataset.get_class_names(),
+
+    if p['dataset'] == 'COCO':
+        base_cls_num = 60
+        novel_cls_num = 20
+        total_cls_num = 80
+
+    else:
+        base_cls_num = 15
+        novel_cls_num = 5
+        total_cls_num = 20
+
+    semseg_meter = SemsegMeter(total_cls_num, val_loader.dataset.get_class_names(),
                             p['has_bg'], ignore_index=255)
     model.eval()
-    all_pixels = torch.zeros((len(val_loader.sampler) * 512 * 512)).cuda()  #.to(model.device)
-    all_gt = torch.zeros((len(val_loader.sampler) * 512 * 512)).cuda() ###.to(model.device)
-    all_gt_novel = torch.zeros((len(val_loader.sampler) * 512 * 512)).cuda() ###.to(model.device)
+    all_pixels = torch.zeros((len(val_loader.sampler) * 512 * 512))  #.to(model.device)
+    all_gt = torch.zeros((len(val_loader.sampler) * 512 * 512)) ###.to(model.device)
+    # all_gt_novel = torch.zeros((len(val_loader.sampler) * 512 * 512)).cuda() ###.to(model.device)
     offset_ = 0
     gt_offset_sum = 0
     pred_offset_sum = 0
@@ -305,38 +336,38 @@ def eval_segmentation_full_classes_offline(p, val_loader, model, verbose=True):
             output, _ = output_tuple
         else:
             output = output_tuple
-        novel_map = (targets > 15).long()
+        novel_map = (targets > base_cls_num).long()
         novel_map[targets==255] = 0
         gt_valid = novel_map.sum()
-        all_gt_novel[gt_offset_sum:gt_offset_sum+gt_valid,] = targets[novel_map==1]
+        # all_gt_novel[gt_offset_sum:gt_offset_sum+gt_valid,] = targets[novel_map==1]
         gt_offset_sum += gt_valid
 
         prediction = torch.argmax(output, dim=1)
         
-        prediction_map = (prediction > 15).long()
+        prediction_map = (prediction > base_cls_num).long()
         pred_offset_sum += prediction_map.sum()
-        true_positive_novel = ((prediction * novel_map) > 15).long() ## both gt and pred are of the novel class
+        true_positive_novel = ((prediction * novel_map) > base_cls_num).long() ## both gt and pred are of the novel class
 
         n_valid = true_positive_novel.sum()
-        all_gt[offset_:offset_+n_valid,] = targets[true_positive_novel==1]
-        all_pixels[offset_:offset_+n_valid,] = prediction[true_positive_novel==1]
+        all_gt[offset_:offset_+n_valid,] = targets[true_positive_novel==1].data.cpu()
+        all_pixels[offset_:offset_+n_valid,] = prediction[true_positive_novel==1].data.cpu()
 
         offset_ += n_valid
     
     all_pixels = all_pixels[:offset_,]
     all_gt = all_gt[:offset_,]
 
-    all_pixels -= 16 ## convert to 0-4
-    all_gt -= 16
+    all_pixels -= (base_cls_num+1) ## convert to 0-4
+    all_gt -= (base_cls_num+1)
 
-    all_pixels = all_pixels.data.cpu().numpy()
-    all_gt = all_gt.data.cpu().numpy()
+    all_pixels = all_pixels.numpy()
+    all_gt = all_gt.numpy()
     
     print('Start hungarian match ......')
-    if p['nclusters'] == 5:
-        match = _hungarian_match(all_pixels, all_gt, preds_k=5, targets_k=5, metric='iou')
-    elif p['nclusters'] > 5:
-        match = _majority_vote(all_pixels, all_gt, preds_k=p['nclusters'], targets_k=5, metric='iou')
+    if p['nclusters'] == novel_cls_num:
+        match = _hungarian_match(all_pixels, all_gt, preds_k=novel_cls_num, targets_k=novel_cls_num, metric='iou')
+    elif p['nclusters'] > novel_cls_num:
+        match = _majority_vote(all_pixels, all_gt, preds_k=p['nclusters'], targets_k=novel_cls_num, metric='iou')
     else:
         raise NotImplementedError
     print('Hungarian match : ', match)
@@ -347,7 +378,7 @@ def eval_segmentation_full_classes_offline(p, val_loader, model, verbose=True):
 
     print('Evaluation with new label ......')
     counter = 0
-    for i, batch in tqdm(enumerate(val_loader)):
+    for i, batch in enumerate(tqdm(val_loader)):
         images = batch['image'].cuda(non_blocking=True)
         targets = batch['semseg'].cuda(non_blocking=True)
         # meta = batch['meta']
@@ -359,7 +390,7 @@ def eval_segmentation_full_classes_offline(p, val_loader, model, verbose=True):
         prediction = torch.argmax(output, dim=1) ## B,H,W
         prediction_relabel = prediction.clone()
         for pred_i, target_i in match:
-            prediction_relabel[prediction==(pred_i+16)] = target_i+16
+            prediction_relabel[prediction==(pred_i+base_cls_num+1)] = target_i+base_cls_num+1
         
         prediction_2class = prediction_relabel.clone()
         ## change the index back to original class order

@@ -22,6 +22,10 @@ This repository contains the official implementation of our paper:
 </p>
 <br>
 
+## News
+- **[Jan 3 2023]** :bell: Training and evaluation code for COCO-20i dataset is released.
+  
+
 ## Requirements
 
 * Python = 3.7
@@ -32,7 +36,8 @@ This repository contains the official implementation of our paper:
 
 ## Data preparation
 
-**We follow [MaskContrast](https://github.com/wvangansbeke/Unsupervised-Semantic-Segmentation) to prepare the data**
+#### PASCAL VOC
+**We follow [MaskContrast](https://github.com/wvangansbeke/Unsupervised-Semantic-Segmentation) to prepare the data.**
 
 Download [PASCAL VOC 2012](https://drive.google.com/file/d/1pxhY5vsLwXuz6UHZVUKhtb7EJdCg2kuH/view). Unzip the dataset and ensure the file structure is as follows:
 
@@ -44,6 +49,28 @@ VOCSegmentation
 └── sets
 ```
 
+#### COCO
+Download [COCO 2014](https://cocodataset.org/#download). Unzip the dataset and preprocess the dataset with the following command:
+```shell
+cd data/data_preprocess
+python coco.py train2014
+python coco.py val2014
+```
+Download the saliency maps from [Google Drive](https://drive.google.com/file/d/1VMH51A4OVGXg-0mQsE60dsKZ4sxy66bX/view). The saliency maps are estimated via [BASNet](https://github.com/xuebinqin/BASNet). Specifically, we directly download the BASNet pre-trained model and inference on the COCO dataset.
+
+The file structure is as follows:
+```shell
+coco
+├── train2014
+├── val2014
+├── masks_train2014
+├── masks_val2014
+├── saliency_supervised_model
+├── val2014.txt
+└── train2014.txt
+```
+
+## Run
 
 ### Inference
 
@@ -88,10 +115,19 @@ sh scripts/eval.sh
     sh scripts/finetune_eums.sh
     ```
 
+### COCO-20i
+The training and evalution scripts for coco-20i dataset are available at:
+```shell
+scripts/coco/*.sh
+```
+
 ## Acknowledgement
 
-Our code is designed based on [MaskContrast](https://github.com/wvangansbeke/Unsupervised-Semantic-Segmentation). If you use this code, please also acknowledge their paper.
+This project is based on the following open-source projects. We thank their
+authors for making the source code publically available.
 
+* [MaskContrast](https://github.com/wvangansbeke/Unsupervised-Semantic-Segmentation)
+* [BASNet](https://github.com/xuebinqin/BASNet)
 
 ## Citation
 We hope you find our work useful. If you would like to acknowledge it in your project, please use the following citation:

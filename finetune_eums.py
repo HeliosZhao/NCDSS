@@ -18,7 +18,9 @@ from utils.train_utils import *
 from utils.evaluate_utils import eval_segmentation_full_classes_online
 from utils.entropy_ranking_utils import *
 
-from data.dataloaders.pascal_voc import VOC12_EUMS, VOC12_NovelFinetuing_Val
+from data.dataloaders.pascal_voc import VOC12_EUMS, VOC12_NovelFinetuning_Val
+from data.dataloaders.coco import COCO_EUMS, COCO_NovelFinetuning_Val
+
 from models.teacher_student import TeacherStudentModel
 from termcolor import colored
 from utils.logger import Logger
@@ -57,6 +59,8 @@ parser.add_argument('--data-root', type=str, default=None,
 
 parser.add_argument('--split-dir', type=str, default='',
                     help='Split dir for txt, empty for not use easy split')
+parser.add_argument('--eval-online', type=str2bool, default='yes',
+                    help='eval online for pascal')
 
 args = parser.parse_args()
 
@@ -118,21 +122,25 @@ def main():
 
     print(colored('Retrieve dataset', 'blue'))
     train_transforms = get_train_transformations()       
-    base_dataset = VOC12_EUMS(root=p['data_root'], split='base', transform=train_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'])
-    base_dataloader = get_train_dataloader(p, base_dataset)
-
-    easy_dataset = VOC12_EUMS(root=p['data_root'], split='easy', transform=train_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'], split_dir=os.path.join(args.novel_dir, args.split_dir))
-    easy_dataloader = get_train_dataloader(p, easy_dataset)
-
     strong_transforms = get_strong_transformations()
     weak_transforms = get_weak_transformations()
-
-    hard_dataset = VOC12_EUMS(root=p['data_root'], split='hard', transform=(weak_transforms,strong_transforms), novel_dir=args.novel_dir, novel_fold=p['fold'], split_dir=os.path.join(args.novel_dir, args.split_dir))
-    hard_dataloader = get_train_dataloader(p, hard_dataset)
-
-
     val_transforms = get_val_transformations()
-    val_dataset = VOC12_NovelFinetuing_Val(root=p['data_root'], split='val', transform=val_transforms, novel_fold=p['fold'])
+
+    if p['dataset'] == 'COCO':
+        train_dataset_func = COCO_EUMS
+        val_dataset_func = COCO_NovelFinetuning_Val
+    else:
+        train_dataset_func = VOC12_EUMS
+        val_dataset_func = VOC12_NovelFinetuning_Val
+
+    base_dataset = train_dataset_func(root=p['data_root'], split='base', transform=train_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'])
+    easy_dataset = train_dataset_func(root=p['data_root'], split='easy', transform=train_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'], split_dir=os.path.join(args.novel_dir, args.split_dir))
+    hard_dataset = train_dataset_func(root=p['data_root'], split='hard', transform=(weak_transforms,strong_transforms), novel_dir=args.novel_dir, novel_fold=p['fold'], split_dir=os.path.join(args.novel_dir, args.split_dir))
+    val_dataset = val_dataset_func(root=p['data_root'], split='val', transform=val_transforms, novel_fold=p['fold'])
+
+    easy_dataloader = get_train_dataloader(p, easy_dataset)
+    base_dataloader = get_train_dataloader(p, base_dataset)
+    hard_dataloader = get_train_dataloader(p, hard_dataset)
     val_dataloader = get_val_dataloader(p, val_dataset)  
     
     print(colored('Base Train samples %d - Novel Easy samples %d - Novel Hard samples %d - Val samples %d' %(len(base_dataset), len(easy_dataset), len(hard_dataset), len(val_dataset)), 'yellow'))
@@ -151,18 +159,18 @@ def main():
 
         if epoch in p['entropy']['reassign_epoch']:
             print(colored('Reassign Easy Split at Epoch {} --> Add part of them to hard split'.format(epoch), 'blue'))
-            cur_easy_dataset = VOC12_EUMS(root=p['data_root'], split='easy', transform=val_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'], split_dir=os.path.join(args.novel_dir, args.split_dir))
+            cur_easy_dataset = train_dataset_func(root=p['data_root'], split='easy', transform=val_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'], split_dir=os.path.join(args.novel_dir, args.split_dir))
             cur_easy_dataloader = get_val_dataloader(p, cur_easy_dataset)
 
             reassign_data_split(p, cur_easy_dataloader, model.model_q)
 
             ### reassign hard loader and easy loader
             ## hard loader
-            hard_new_dataset = VOC12_EUMS(root=p['data_root'], split='hard', transform=(weak_transforms,strong_transforms), novel_dir=args.novel_dir, novel_fold=p['fold'], split_dir=p['output_dir'])
+            hard_new_dataset = train_dataset_func(root=p['data_root'], split='hard', transform=(weak_transforms,strong_transforms), novel_dir=args.novel_dir, novel_fold=p['fold'], split_dir=p['output_dir'])
             hard_dataset = torch.utils.data.ConcatDataset([hard_dataset, hard_new_dataset])
             hard_dataloader = get_train_dataloader(p, hard_dataset)
 
-            easy_dataset = VOC12_EUMS(root=p['data_root'], split='easy', transform=train_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'], split_dir=p['output_dir'])
+            easy_dataset = train_dataset_func(root=p['data_root'], split='easy', transform=train_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'], split_dir=p['output_dir'])
             easy_dataloader = get_train_dataloader(p, easy_dataset)
             print(colored('Base Train samples %d - Novel Easy samples %d - Novel Hard samples %d - Val samples %d' %(len(base_dataset), len(easy_dataset), len(hard_dataset), len(val_dataset)), 'yellow'))
 
@@ -176,18 +184,19 @@ def main():
         eval_train = train_eums(p, base_dataloader, easy_dataloader, hard_dataloader, model, criterion, optimizer, epoch, freeze_batchnorm=p['freeze_batchnorm'])
 
         # Evaluate online -> This will use batched eval where every image is resized to the same resolution.
-        print('Evaluate ...')
-        eval_val = eval_segmentation_full_classes_online(p, val_dataloader, model.model_q)
-        
-        if eval_val['mIoU'] > best_iou:
-            print('Found new best model: %.2f -> %.2f (mIoU)' %(100*best_iou, 100*eval_val['mIoU']))
-            best_iou = eval_val['mIoU']
-            best_epoch = epoch
-            torch.save(model.state_dict(), p['best_model'])
-        
-        else:
-            print('No new best model: %.2f -> %.2f (mIoU)' %(100*best_iou, 100*eval_val['mIoU']))
-            print('Last best model was found in epoch %d' %(best_epoch))
+        if args.eval_online:
+            print('Evaluate ...')
+            eval_val = eval_segmentation_full_classes_online(p, val_dataloader, model.model_q)
+            
+            if eval_val['mIoU'] > best_iou:
+                print('Found new best model: %.2f -> %.2f (mIoU)' %(100*best_iou, 100*eval_val['mIoU']))
+                best_iou = eval_val['mIoU']
+                best_epoch = epoch
+                torch.save(model.state_dict(), p['best_model'])
+            
+            else:
+                print('No new best model: %.2f -> %.2f (mIoU)' %(100*best_iou, 100*eval_val['mIoU']))
+                print('Last best model was found in epoch %d' %(best_epoch))
 
         # Checkpoint
         print('Checkpoint ...')
@@ -195,5 +204,9 @@ def main():
                     'epoch': epoch + 1, 'best_epoch': best_epoch, 'best_iou': best_iou}, 
                     p['checkpoint'])
 
+    ## eval last model
+    eval_val = eval_segmentation_full_classes_online(p, val_dataloader, model)
+    print('Final Model at Epoch {} \t mIoU: {:.2f}'.format(p['epochs'], 100*eval_val['mIoU']) )
+    
 if __name__ == "__main__":
     main()

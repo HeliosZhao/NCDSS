@@ -43,6 +43,9 @@ parser.add_argument('--seed', type=int, default=242133,
 parser.add_argument('--data-root', type=str, default=None,
                     help='Dataset root')
 
+parser.add_argument('--eval-online', type=str2bool, default='yes',
+                    help='eval online for pascal')
+
 args = parser.parse_args()
 
 def set_seed(random_seed):
@@ -143,24 +146,30 @@ def main():
                                                     freeze_batchnorm=p['freeze_batchnorm'])
 
         # Evaluate online -> This will use batched eval where every image is resized to the same resolution.
-        print('Evaluate ...')
-        eval_val = eval_segmentation_supervised_online(p, val_dataloader, model)
-        if eval_val['mIoU'] > best_iou:
-            print('Found new best model: %.2f -> %.2f (mIoU)' %(100*best_iou, 100*eval_val['mIoU']))
-            best_iou = eval_val['mIoU']
-            best_epoch = epoch
-            torch.save(model.state_dict(), p['best_model'])
-        
-        else:
-            print('No new best model: %.2f -> %.2f (mIoU)' %(100*best_iou, 100*eval_val['mIoU']))
-            print('Last best model was found in epoch %d' %(best_epoch))
+        if args.eval_online:
+            print('Evaluate ...')
+            eval_val = eval_segmentation_supervised_online(p, val_dataloader, model)
+            if eval_val['mIoU'] > best_iou:
+                print('Found new best model: %.2f -> %.2f (mIoU)' %(100*best_iou, 100*eval_val['mIoU']))
+                best_iou = eval_val['mIoU']
+                best_epoch = epoch
+                torch.save(model.state_dict(), p['best_model'])
+            
+            else:
+                print('No new best model: %.2f -> %.2f (mIoU)' %(100*best_iou, 100*eval_val['mIoU']))
+                print('Last best model was found in epoch %d' %(best_epoch))
 
         # Checkpoint
         print('Checkpoint ...')
         torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(), 
                     'epoch': epoch + 1, 'best_epoch': best_epoch, 'best_iou': best_iou}, 
                     p['checkpoint'])
-
+    
+    ## final model eval
+    eval_val = eval_segmentation_supervised_online(p, val_dataloader, model)
+    torch.save(model.state_dict(), os.path.join(p['output_dir'], 'last_model.pth.tar'))
+                    
+    print('Final Model at Epoch {} \t mIoU: {:.2f}'.format(p['epochs'], 100*eval_val['mIoU']) )
 
 if __name__ == "__main__":
     main()

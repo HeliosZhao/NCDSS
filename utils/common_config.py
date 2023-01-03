@@ -108,6 +108,11 @@ def get_train_dataset(p, transform=None):
         from data.dataloaders.pascal_voc import VOC12_Base
 
         dataset = VOC12_Base(root=p['data_root'], split=p['train_db_kwargs']['split'], transform=transform, novel_fold=p['fold'])
+
+    elif p['train_db_name'] == 'COCO_BASE':
+        from data.dataloaders.coco import COCO_Base
+
+        dataset = COCO_Base(root=p['data_root'], split=p['train_db_kwargs']['split'], transform=transform, novel_fold=p['fold'])
     
     else:
         raise ValueError('Invalid train dataset {}'.format(p['train_db_name']))
@@ -124,6 +129,9 @@ def get_val_dataset(p, transform=None):
         from data.dataloaders.pascal_voc import VOC12_Base
         dataset = VOC12_Base(root=p['data_root'], split='val', transform=transform, novel_fold=p['fold'])        
 
+    elif p['val_db_name'] == 'COCO_BASE':
+        from data.dataloaders.coco import COCO_Base
+        dataset = COCO_Base(root=p['data_root'], split='val', transform=transform, novel_fold=p['fold'])        
 
     else:
         raise ValueError('Invalid validation dataset {}'.format(p['val_db_name']))

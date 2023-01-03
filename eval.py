@@ -11,7 +11,8 @@ from utils.common_config import get_val_dataset, get_val_transformations,\
 from utils.evaluate_utils import eval_segmentation_supervised_offline, eval_segmentation_full_classes_offline
 from termcolor import colored
 from models.teacher_student import TeacherStudentModel
-from data.dataloaders.pascal_voc import VOC12_NovelFinetuing_Val, VOC12
+from data.dataloaders.pascal_voc import VOC12_NovelFinetuning_Val
+from data.dataloaders.coco import COCO_NovelFinetuning_Val
 
 
 # Parser
@@ -69,7 +70,9 @@ def main():
     # val_dataloader = get_val_dataloader(p, val_dataset)
 
     # val_transforms = get_val_transformations()
-    val_dataset = VOC12_NovelFinetuing_Val(root=p['data_root'], split='val', transform=val_transforms, novel_fold=p['fold'])
+    val_dataset_func = COCO_NovelFinetuning_Val if p['dataset'] == 'COCO' else VOC12_NovelFinetuning_Val
+
+    val_dataset = val_dataset_func(root=p['data_root'], split='val', transform=val_transforms, novel_fold=p['fold'])
     val_dataloader = get_val_dataloader(p, val_dataset)  
 
     print(colored('Val samples %d' %(len(val_dataset)), 'yellow'))

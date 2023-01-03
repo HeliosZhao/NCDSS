@@ -1,0 +1,28 @@
+# Dataset
+root_dir: output # Results will be saved at this location.
+train_db_name: COCO_BASE
+data_root: /ssd/yyzhao/data/coco
+train_db_kwargs:
+   base_all: True
+   split: train
+   batch_size: 16
+val_db_name: COCO_BASE
+val_db_kwargs:
+  batch_size: 1
+num_workers: 4
+
+# Model
+backbone: 'resnet50'
+backbone_imagenet: True
+backbone_kwargs:
+   dilated: True
+   pretrained: True
+model_kwargs:
+   ndim: 32
+   head: linear
+   upsample: True
+   use_classification_head: True
+head: 'deeplab'
+freeze_layer: 'none'
+pretraining: '' 
+kmeans_eval: True

@@ -29,8 +29,8 @@ def save_kmeans_embeddings_novel(p, val_loader, model, n_clusters=5, seed=242133
     else:
         prototype_dim = 32
 
-    all_prototypes = torch.zeros((len(val_loader.sampler), prototype_dim)).cuda()
-    all_sals = torch.zeros((len(val_loader.sampler), 512, 512)).cuda()
+    all_prototypes = torch.zeros((len(val_loader.sampler), prototype_dim))
+    all_sals = torch.zeros((len(val_loader.sampler), 512, 512))
     names = []
     img_sizes = []
     for i, batch in enumerate(tqdm(val_loader)):
@@ -44,8 +44,8 @@ def save_kmeans_embeddings_novel(p, val_loader, model, n_clusters=5, seed=242133
         sal_proto = sal.reshape(bs, -1, 1).type(output.dtype) # B x H.W x 1
         prototypes = torch.bmm(output, sal_proto*(sal_proto>0.5).float()).squeeze(-1) # B x dim
         prototypes = nn.functional.normalize(prototypes, dim=1)        
-        all_prototypes[ptr: ptr + bs] = prototypes
-        all_sals[ptr: ptr + bs, :, :] = (sal > 0.5).float()
+        all_prototypes[ptr: ptr + bs] = prototypes.cpu()
+        all_sals[ptr: ptr + bs, :, :] = (sal.cpu() > 0.5).float()
         ptr += bs
         for i in range(len(meta['image'])):
             name = meta['image'][i]
@@ -57,8 +57,8 @@ def save_kmeans_embeddings_novel(p, val_loader, model, n_clusters=5, seed=242133
             print('Computing prototype {}'.format(ptr))
 
     # perform kmeans
-    all_prototypes = all_prototypes.cpu().numpy()
-    all_sals = all_sals.cpu().numpy()
+    all_prototypes = all_prototypes.numpy()
+    all_sals = all_sals.numpy()
     # n_clusters = n_clusters - 1
     print('Kmeans clustering to {} clusters'.format(n_clusters))
     

@@ -14,6 +14,10 @@ parser.add_argument('--fold', type=str, default='fold0',
 
 parser.add_argument('-t', '--threshold', type=int, default=1500, 
                     help='Threshold for filter out images')
+
+parser.add_argument('--coco', action='store_true', 
+                    help='coco dataset')
+
 args = parser.parse_args()
 
 novel_map_list = sorted(glob(os.path.join(args.novel_dir, 'novel_map', '*.png')))
@@ -31,14 +35,23 @@ with open(novel_file_name, 'w') as novelf:
     for name in remaining_list:
         novelf.write(name + '\n')
 
+if args.coco:
+    split_dir = 'data/data_split/coco'
+    split_file = os.path.join(split_dir, args.fold, 'train', 'base.txt')
+else:
+    split_dir = 'data/data_split'
+    split_file = os.path.join(split_dir, args.fold, 'base.txt')
 
-split_dir = 'data/data_split'
-split_file = os.path.join(split_dir, args.fold, 'base.txt')
 with open(split_file, "r") as f:
     all_base_lines = f.read().splitlines()
 
-split_dir = 'data/data_split'
-split_file = os.path.join(split_dir, args.fold, 'novel.txt')
+if args.coco:
+    split_dir = 'data/data_split/coco'
+    split_file = os.path.join(split_dir, args.fold, 'train', 'novel.txt')
+else:
+    split_dir = 'data/data_split'
+    split_file = os.path.join(split_dir, args.fold, 'novel.txt')
+    
 with open(split_file, "r") as f:
     all_novel_lines = f.read().splitlines()
 

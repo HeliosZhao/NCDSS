@@ -15,6 +15,9 @@ from termcolor import colored
 import torchvision.transforms as transforms
 from termcolor import colored
 
+from data.dataloaders.pascal_voc import VOC12_NovelClustering
+from data.dataloaders.coco import COCO_NovelClustering
+
 
 # Parser
 parser = argparse.ArgumentParser(description='Kmeans for clustering pseudo-labels')
@@ -22,7 +25,7 @@ parser.add_argument('--config', type=str, required=True,
                     help='Config file for the experiment')
 parser.add_argument('--novel-dir', type=str, required=True,
                     help='Config file for the experiment')
-parser.add_argument('--output-dir',
+parser.add_argument('--output-dir', type=str,
                     help='Config file for the experiment')
 parser.add_argument('--fold', type=str, default='fold0',
                     help='Split fold for novel class')
@@ -60,14 +63,17 @@ def main():
     print(colored('Retrieve dataset', 'blue'))
     
     # Transforms 
-    from data.dataloaders.pascal_voc import VOC12_NovelClustering
     val_transforms = transforms.Compose([custom_tr.FixedResize(resolutions={'image': tuple((512,512)), 
                                                         'sal': tuple((512,512))},
                                             flagvals={'image': cv2.INTER_CUBIC, 'sal': cv2.INTER_NEAREST}),
                                 custom_tr.ToTensor(),
                                 custom_tr.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])])
     print(val_transforms)
-    val_dataset = VOC12_NovelClustering(root=args.data_dir, split='val', transform=val_transforms, novel_dir=args.novel_dir)
+    if p['dataset'] == 'COCO':
+        val_dataset = COCO_NovelClustering(root=args.data_dir, split='val', transform=val_transforms, novel_dir=args.novel_dir)
+    else:
+        val_dataset = VOC12_NovelClustering(root=args.data_dir, split='val', transform=val_transforms, novel_dir=args.novel_dir)
+        
     val_dataloader = get_val_dataloader(p, val_dataset)
 
     # Kmeans Clustering

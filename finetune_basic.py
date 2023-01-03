@@ -15,7 +15,8 @@ from utils.common_config import get_train_transformations, get_val_transformatio
                                 get_optimizer, get_model, adjust_learning_rate
 from utils.train_utils import train_basic
 from utils.evaluate_utils import eval_segmentation_full_classes_online
-from data.dataloaders.pascal_voc import VOC12_Basic_Train, VOC12_NovelFinetuing_Val
+from data.dataloaders.pascal_voc import VOC12_Basic_Train, VOC12_NovelFinetuning_Val
+from data.dataloaders.coco import COCO_Basic_Train, COCO_NovelFinetuning_Val
 from termcolor import colored
 from utils.logger import Logger
 
@@ -47,6 +48,8 @@ parser.add_argument('--seed', type=int, default=242133,
 
 parser.add_argument('--data-root', type=str, default=None,
                     help='Dataset root')
+parser.add_argument('--eval-online', type=str2bool, default='yes',
+                    help='eval online for pascal')
 
 args = parser.parse_args()
 
@@ -117,15 +120,19 @@ def main():
     # Dataset
     print(colored('Retrieve dataset', 'blue'))
     train_transforms = get_train_transformations()       
-    base_dataset = VOC12_Basic_Train(root=p['data_root'], split='base', transform=train_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'])
-    base_dataloader = get_train_dataloader(p, base_dataset)
-
-    novel_dataset = VOC12_Basic_Train(root=p['data_root'], split='novel', transform=train_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'])
-    novel_dataloader = get_train_dataloader(p, novel_dataset)
-
-
     val_transforms = get_val_transformations()
-    val_dataset = VOC12_NovelFinetuing_Val(root=p['data_root'], split='val', transform=val_transforms, novel_fold=p['fold'])
+    if p['dataset'] == 'COCO':
+        base_dataset = COCO_Basic_Train(root=p['data_root'], split='base', transform=train_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'])
+        novel_dataset = COCO_Basic_Train(root=p['data_root'], split='novel', transform=train_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'])
+        val_dataset = COCO_NovelFinetuning_Val(root=p['data_root'], split='val', transform=val_transforms, novel_fold=p['fold'])
+
+    else:
+        base_dataset = VOC12_Basic_Train(root=p['data_root'], split='base', transform=train_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'])
+        novel_dataset = VOC12_Basic_Train(root=p['data_root'], split='novel', transform=train_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'])
+        val_dataset = VOC12_NovelFinetuning_Val(root=p['data_root'], split='val', transform=val_transforms, novel_fold=p['fold'])
+
+    base_dataloader = get_train_dataloader(p, base_dataset)
+    novel_dataloader = get_train_dataloader(p, novel_dataset)
     val_dataloader = get_val_dataloader(p, val_dataset)  
     
     
@@ -154,24 +161,29 @@ def main():
         eval_train = train_basic(p, base_dataloader, novel_dataloader, model, criterion, optimizer, epoch, freeze_batchnorm=p['freeze_batchnorm'])
 
         # Evaluate online -> This will use batched eval where every image is resized to the same resolution.
-        print('Evaluate ...')
-        eval_val = eval_segmentation_full_classes_online(p, val_dataloader, model)
-        
-        if eval_val['mIoU'] > best_iou:
-            print('Found new best model: %.2f -> %.2f (mIoU)' %(100*best_iou, 100*eval_val['mIoU']))
-            best_iou = eval_val['mIoU']
-            best_epoch = epoch
-            torch.save(model.state_dict(), p['best_model'])
-        
-        else:
-            print('No new best model: %.2f -> %.2f (mIoU)' %(100*best_iou, 100*eval_val['mIoU']))
-            print('Last best model was found in epoch %d' %(best_epoch))
+        if args.eval_online:
+            print('Evaluate ...')
+            eval_val = eval_segmentation_full_classes_online(p, val_dataloader, model)
+            
+            if eval_val['mIoU'] > best_iou:
+                print('Found new best model: %.2f -> %.2f (mIoU)' %(100*best_iou, 100*eval_val['mIoU']))
+                best_iou = eval_val['mIoU']
+                best_epoch = epoch
+                torch.save(model.state_dict(), p['best_model'])
+            
+            else:
+                print('No new best model: %.2f -> %.2f (mIoU)' %(100*best_iou, 100*eval_val['mIoU']))
+                print('Last best model was found in epoch %d' %(best_epoch))
 
         # Checkpoint
         print('Checkpoint ...')
         torch.save({'optimizer': optimizer.state_dict(), 'model': model.state_dict(), 
                     'epoch': epoch + 1, 'best_epoch': best_epoch, 'best_iou': best_iou}, 
                     p['checkpoint'])
+    
+    ## eval last model
+    eval_val = eval_segmentation_full_classes_online(p, val_dataloader, model)
+    print('Final Model at Epoch {} \t mIoU: {:.2f}'.format(p['epochs'], 100*eval_val['mIoU']) )
 
 
 if __name__ == "__main__":

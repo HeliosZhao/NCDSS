@@ -44,6 +44,7 @@ def cluster_subdomain(entropy_list, save_dir, lambda1):
 def reassign_data_split(p, cur_loader, model, save_dir_=None, split_proportion=None):
 
     model.eval()
+    base_cls_num = 60 if p['dataset'] == 'COCO' else 15
 
     save_dir = save_dir_ if save_dir_ else p['output_dir']
 
@@ -68,7 +69,7 @@ def reassign_data_split(p, cur_loader, model, save_dir_=None, split_proportion=N
             normalizor = 1
             pred_trg_entropy = prob_2_entropy(F.softmax(output, dim=1))  ## b,c,h,w
             b,c,h,w = pred_trg_entropy.size()
-            novel_map = (targets > 15).reshape(b,-1).unsqueeze(1) # b,h,w --> b,hw --> b,1,hw
+            novel_map = (targets > base_cls_num).reshape(b,-1).unsqueeze(1) # b,h,w --> b,hw --> b,1,hw
             novel_entropy = (pred_trg_entropy.reshape(b,c,-1) * novel_map).sum(-1) / novel_map.sum(-1)
             for jj in range(output.shape[0]):
                 entropy_list.append((meta['image'][jj], novel_entropy[jj].mean().item() * normalizor))

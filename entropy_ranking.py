@@ -12,6 +12,7 @@ from utils.config import create_config
 from utils.common_config import get_val_transformations, get_val_dataloader, get_model
 
 from data.dataloaders.pascal_voc import VOC12_Basic_Train
+from data.dataloaders.coco import COCO_Basic_Train
 
 from termcolor import colored
 from utils.logger import Logger
@@ -110,7 +111,13 @@ def main():
     model = model.cuda()
     val_transforms = get_val_transformations()
 
-    novel_dataset = VOC12_Basic_Train(root=p['data_root'], split='novel', transform=val_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'])
+    if p['dataset'] == 'COCO':
+        novel_dataset = COCO_Basic_Train(root=p['data_root'], split='novel', transform=val_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'])
+        base_cls_num = 60
+    else:
+        novel_dataset = VOC12_Basic_Train(root=p['data_root'], split='novel', transform=val_transforms, novel_dir=args.novel_dir, novel_fold=p['fold'])
+        base_cls_num = 15
+
     val_dataloader = get_val_dataloader(p, novel_dataset)  
 
     ## load best model from ckpt
@@ -124,7 +131,7 @@ def main():
     os.makedirs(save_dir, exist_ok=True)
     entropy_list = []
     with torch.no_grad():
-        for i, batch in tqdm(enumerate(val_dataloader)):
+        for i, batch in enumerate(tqdm(val_dataloader)):
             images = batch['image'].cuda(non_blocking=True)
             targets = batch['semseg'].cuda(non_blocking=True)
             meta = batch['meta']
@@ -138,7 +145,7 @@ def main():
             normalizor = 1
             pred_trg_entropy = prob_2_entropy(F.softmax(output, dim=1))  ## b,c,h,w
             b,c,h,w = pred_trg_entropy.size()
-            novel_map = (targets > 15).reshape(b,-1).unsqueeze(1) # b,h,w --> b,hw --> b,1,hw
+            novel_map = (targets > base_cls_num).reshape(b,-1).unsqueeze(1) # b,h,w --> b,hw --> b,1,hw
             novel_entropy = (pred_trg_entropy.reshape(b,c,-1) * novel_map).sum(-1) / novel_map.sum(-1)
             for jj in range(output.shape[0]):
                 entropy_list.append((meta['image'][jj], novel_entropy[jj].mean().item() * normalizor))
